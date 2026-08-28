@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NCS Colour Explorer</title>
+  <meta name="description" content="Interactive NCS colour explorer with a hue-circle chromaticness map and editable NCS properties." />
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f4f1;
+      --panel: rgba(255,255,255,.90);
+      --panel-strong: #ffffff;
+      --ink: #171717;
+      --muted: #73736e;
+      --line: #deded7;
+      --soft: #eeeeea;
+      --accent: #604046;
+      --shadow: 0 18px 50px rgba(20, 20, 15, .08);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 22% 8%, rgba(255,255,255,.95), transparent 31rem),
+        linear-gradient(135deg, #f6f5f1, #ecece6);
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid #191919;
+      outline-offset: 2px;
+    }
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr) 330px;
+      gap: 14px;
+      padding: 14px;
+    }
+    /* Collapsible side panels */
+    .app.left-off  { grid-template-columns: minmax(0, 1fr) 330px; }
+    .app.right-off { grid-template-columns: 280px minmax(0, 1fr); }
+    .app.left-off.right-off { grid-template-columns: minmax(0, 1fr); }
+    .app.left-off .controls, .app.right-off .sidebar { display: none; }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid rgba(0,0,0,.07);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+      border-radius: 22px;
+      overflow: hidden;
+    }
+    .controls, .sidebar { padding: 22px; }
+    .controls { display: flex; flex-direction: column; gap: 22px; overflow: auto; }
+    .eyebrow {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    h1 { font-size: 23px; line-height: 1.05; margin: 7px 0 8px; letter-spacing: -.03em; }
+    .intro { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .control-group { display: grid; gap: 10px; }
+    .label-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+    label { font-size: 12px; font-weight: 700; }
+    output { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+    input[type="text"], input[type="number"], select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      padding: 10px 11px;
+      color: var(--ink);
+      background: rgba(255,255,255,.88);
+      outline: none;
+    }
+    input:focus, select:focus { border-color: #99998f; box-shadow: 0 0 0 3px rgba(0,0,0,.05); }
+    .quick-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+    .chip-btn {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 7px 4px;
+      background: #fff;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .chip-btn.active { background: #181818; color: white; border-color: #181818; }
+    .search-row { display: grid; grid-template-columns: 1fr auto; gap: 7px; }
+    .search-row button, .copy-btn, .primary-btn {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #191919;
+      color: #fff;
+      font-weight: 700;
+      font-size: 12px;
+    }
+    .note {
+      padding: 12px 13px;
+      border-radius: 13px;
+      border: 1px solid var(--line);
+      background: rgba(246,246,242,.82);
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .note strong { color: var(--ink); }
+
+    .stage {
+      min-height: calc(100vh - 28px);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .stage-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 15px 16px 0;
+    }
+    .head-cluster { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .stage-title { font-size: 14px; font-weight: 800; }
+    .stage-meta { font-size: 11px; color: var(--muted); text-align: right; }
+    .ghost-btn {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.85);
+      border-radius: 9px;
+      padding: 7px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--ink);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .ghost-btn[aria-expanded="false"] { background: #181818; color: #fff; border-color: #181818; }
+    .map-wrap {
+      min-height: 0;
+      flex: 1;
+      display: grid;
+      place-items: center;
+      padding: 10px 16px 16px;
+    }
+    #map {
+      width: min(100%, 820px);
+      height: auto;
+      max-height: calc(100vh - 150px);
+      aspect-ratio: 1;
+      touch-action: manipulation;
+    }
+    .cell {
+      stroke: rgba(255,255,255,.5);
+      stroke-width: .6;
+      vector-effect: non-scaling-stroke;
+      transition: opacity .09s, stroke-width .09s;
+      cursor: pointer;
+    }
+    .cell:hover { opacity: .82; stroke: white; stroke-width: 2.2; }
+    .cell.selected { stroke: #111; stroke-width: 3; filter: drop-shadow(0 2px 3px rgba(0,0,0,.25)); }
+    .axis-label { font-size: 15px; font-weight: 800; fill: rgba(0,0,0,.64); paint-order: stroke; stroke: rgba(255,255,255,.9); stroke-width: 4px; }
+    .legend {
+      position: absolute;
+      left: 20px;
+      bottom: 18px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      pointer-events: none;
+    }
+    .legend span {
+      background: rgba(255,255,255,.78);
+      border: 1px solid rgba(0,0,0,.08);
+      border-radius: 999px;
+      padding: 6px 9px;
+      font-size: 10px;
+      color: #5d5d58;
+      backdrop-filter: blur(8px);
+    }
+
+    .tooltip {
+      position: fixed;
+      z-index: 50;
+      pointer-events: none;
+      opacity: 0;
+      transform: translate(12px, 12px);
+      padding: 8px 10px;
+      border-radius: 9px;
+      color: #fff;
+      background: rgba(10,10,10,.90);
+      box-shadow: 0 6px 24px rgba(0,0,0,.18);
+      font-size: 11px;
+      line-height: 1.4;
+      white-space: nowrap;
+      transition: opacity .06s;
+    }
+    .tooltip.show { opacity: 1; }
+    .tooltip .tt-code { font-weight: 800; }
+    .tooltip .tt-sub, .tooltip .tt-mix { opacity: .72; font-variant-numeric: tabular-nums; }
+
+    .sidebar { overflow: auto; }
+    .selected-swatch {
+      height: 155px;
+      border-radius: 18px;
+      border: 1px solid rgba(0,0,0,.1);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
+      position: relative;
+      overflow: hidden;
+    }
+    .swatch-badge {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      background: rgba(255,255,255,.85);
+      color: #111;
+      padding: 7px 9px;
+      border-radius: 9px;
+      font-size: 11px;
+      font-weight: 800;
+      backdrop-filter: blur(8px);
+    }
+    .code-row { display: flex; align-items: center; gap: 8px; margin: 15px 0 3px; }
+    .selected-code { font-size: 21px; font-weight: 850; letter-spacing: -.02em; flex: 1; }
+    .copy-btn { padding: 7px 9px; background: #ecece7; color: #191919; border: 1px solid #deded7; }
+    .selected-desc { margin: 0 0 20px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .section-title { margin: 21px 0 9px; font-size: 11px; letter-spacing: .10em; text-transform: uppercase; color: var(--muted); font-weight: 800; }
+    .property-grid { display: grid; gap: 7px; }
+    .property {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      border-bottom: 1px solid var(--soft);
+      padding: 8px 0;
+      font-size: 12px;
+    }
+    .property span:first-child { color: var(--muted); }
+    .property code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; }
+    .triplet { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0 3px; }
+    .metric { background: #f3f3ef; border: 1px solid #e5e5df; border-radius: 10px; padding: 9px; }
+    .metric .n { font-size: 18px; font-weight: 850; font-variant-numeric: tabular-nums; }
+    .metric .t { font-size: 9px; color: var(--muted); margin-top: 3px; text-transform: uppercase; letter-spacing: .07em; }
+    .bar { height: 6px; background: #ecece7; border-radius: 999px; overflow: hidden; margin-top: 7px; }
+    .bar > i { display: block; height: 100%; background: #222; border-radius: inherit; }
+    .adjust-grid { display: grid; gap: 12px; }
+    .adjust-grid .control-group { gap: 5px; }
+    .hue-display { font-size: 11px; color: var(--muted); margin-top: -2px; }
+    .footer-note { color: var(--muted); font-size: 10px; line-height: 1.45; margin-top: 20px; }
+    .status { min-height: 16px; font-size: 11px; color: #9a3f45; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .cell, .tooltip { transition: none; }
+    }
+    @media (max-width: 1180px) {
+      .app { grid-template-columns: 240px minmax(0, 1fr) 300px; }
+      .app.left-off  { grid-template-columns: minmax(0, 1fr) 300px; }
+      .app.right-off { grid-template-columns: 240px minmax(0, 1fr); }
+      .app.left-off.right-off { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (max-width: 960px) {
+      .app, .app.left-off, .app.right-off, .app.left-off.right-off { grid-template-columns: 1fr; }
+      .stage { min-height: 620px; order: 1; }
+      .controls { order: 0; }
+      .sidebar { order: 2; }
+      .controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .controls > header, .controls > .note { grid-column: 1 / -1; }
+    }
+    @media (max-width: 620px) {
+      .app { padding: 8px; gap: 8px; }
+      .panel { border-radius: 16px; }
+      .controls, .sidebar { padding: 16px; }
+      .controls { grid-template-columns: 1fr; }
+      .controls > header, .controls > .note { grid-column: auto; }
+      .stage { min-height: 520px; }
+      .stage-head { padding: 12px 12px 0; flex-wrap: wrap; }
+      .map-wrap { padding: 0 7px 42px; }
+      .legend { left: 12px; bottom: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app" id="app">
+    <aside class="panel controls" id="controlsPanel">
+      <header>
+        <div class="eyebrow">Natural Colour System</div>
+        <h1>NCS Colour Explorer</h1>
+        <p class="intro">Angle = hue, distance from centre = chromaticness, and the blackness slider moves through the third dimension of NCS.</p>
+      </header>
+
+      <section class="control-group">
+        <div class="label-row"><label for="blackness">Blackness</label><output id="blacknessOut">40%</output></div>
+        <input id="blackness" type="range" min="0" max="99" step="1" value="40" />
+        <div class="quick-row" id="quickBlackness">
+          <button class="chip-btn" data-v="30">S 30xx</button>
+          <button class="chip-btn active" data-v="40">S 40xx</button>
+          <button class="chip-btn" data-v="50">S 50xx</button>
+          <button class="chip-btn" data-v="60">S 60xx</button>
+        </div>
+      </section>
+
+      <section class="control-group">
+        <div class="label-row"><label for="chromaStep">Chromaticness resolution</label></div>
+        <select id="chromaStep">
+          <option value="10">10-point steps</option>
+          <option value="5" selected>5-point steps</option>
+          <option value="2">2-point steps</option>
+        </select>
+      </section>
+
+      <section class="control-group">
+        <div class="label-row"><label for="hueStep">Hue resolution</label></div>
+        <select id="hueStep">
+          <option value="20">20-point hue steps · 20 directions</option>
+          <option value="10" selected>10-point hue steps · 40 directions</option>
+          <option value="5">5-point hue steps · 80 directions</option>
+        </select>
+      </section>
+
+      <section class="control-group">
+        <label for="search">Jump to NCS code</label>
+        <div class="search-row">
+          <input id="search" type="text" value="S 4040-R20B" spellcheck="false" aria-label="NCS code" />
+          <button id="goSearch">Go</button>
+        </div>
+        <div class="status" id="status" role="status"></div>
+      </section>
+
+      <div class="note">
+        <strong>Screen-colour note.</strong> NCS is a perceptual/physical colour specification, not an RGB colour space. HEX/RGB here are screen approximations. This page explores the NCS notation space; the official NCS 2050 standard-chip catalogue is an irregular subset of that space.
+      </div>
+    </aside>
+
+    <section class="panel stage">
+      <div class="stage-head">
+        <div class="head-cluster">
+          <button id="toggleLeft" class="ghost-btn" aria-expanded="true" aria-controls="controlsPanel" title="Show/hide controls - shortcut [">⟨ Controls</button>
+          <div>
+            <div class="eyebrow">Colour-circle slice</div>
+            <div class="stage-title" id="sliceTitle">Blackness 40%</div>
+          </div>
+        </div>
+        <div class="head-cluster">
+          <div class="stage-meta" id="mapMeta">Loading map…</div>
+          <button id="toggleRight" class="ghost-btn" aria-expanded="true" aria-controls="sidebarPanel" title="Show/hide details - shortcut ]">Details ⟩</button>
+        </div>
+      </div>
+      <div class="map-wrap">
+        <svg id="map" viewBox="-448 -448 896 896" role="img" aria-label="Interactive NCS colour map"></svg>
+      </div>
+      <div class="legend">
+        <span>centre = neutral</span>
+        <span>each ring = one chroma step</span>
+        <span>hover = inspect</span>
+        <span>click = select</span>
+      </div>
+    </section>
+
+    <aside class="panel sidebar" id="sidebarPanel">
+      <div class="selected-swatch" id="selectedSwatch"><div class="swatch-badge" id="swatchBadge">screen approximation</div></div>
+      <div class="code-row">
+        <div class="selected-code" id="selectedCode">S 4040-R20B</div>
+        <button class="copy-btn" data-copy="code">Copy</button>
+      </div>
+      <p class="selected-desc" id="selectedDesc">Red with 20% blue; medium blackness and strong chromaticness.</p>
+
+      <div class="triplet">
+        <div class="metric"><div class="n" id="metricBlack">40</div><div class="t">blackness</div><div class="bar"><i id="barBlack"></i></div></div>
+        <div class="metric"><div class="n" id="metricChroma">40</div><div class="t">chroma</div><div class="bar"><i id="barChroma"></i></div></div>
+        <div class="metric"><div class="n" id="metricWhite">20</div><div class="t">whiteness</div><div class="bar"><i id="barWhite"></i></div></div>
+      </div>
+
+      <div class="section-title">Colour values</div>
+      <div class="property-grid">
+        <div class="property"><span>HEX</span><code id="hexValue">-</code></div>
+        <div class="property"><span>RGB</span><code id="rgbValue">-</code></div>
+        <div class="property"><span>HSL</span><code id="hslValue">-</code></div>
+        <div class="property"><span>CSS</span><code id="cssValue">-</code></div>
+        <div class="property"><span>Hue</span><code id="hueValue">-</code></div>
+        <div class="property"><span>Hue position</span><code id="hueUnitValue">-</code></div>
+      </div>
+
+      <div class="section-title">Adjust selected colour</div>
+      <div class="adjust-grid">
+        <div class="control-group">
+          <div class="label-row"><label for="selBlack">Blackness</label><output id="selBlackOut">40</output></div>
+          <input id="selBlack" type="range" min="0" max="99" step="1" value="40" />
+        </div>
+        <div class="control-group">
+          <div class="label-row"><label for="selChroma">Chromaticness</label><output id="selChromaOut">40</output></div>
+          <input id="selChroma" type="range" min="0" max="100" step="1" value="40" />
+        </div>
+        <div class="control-group">
+          <div class="label-row"><label for="selHue">Hue position</label><output id="selHueOut">R20B</output></div>
+          <input id="selHue" type="range" min="0" max="399" step="1" value="20" />
+          <div class="hue-display">R → B → G → Y → R</div>
+        </div>
+      </div>
+
+      <div class="section-title">Quick copy</div>
+      <div class="search-row">
+        <button class="primary-btn" data-copy="hex">Copy HEX</button>
+        <button class="primary-btn" data-copy="rgb">Copy RGB</button>
+      </div>
+
+      <div class="footer-note">
+        Tip: for your burgundy / gooseberry exploration, keep the map around blackness 40-50 and inspect the R10B-R30B sector. Increasing chromaticness moves outward from the centre.
+      </div>
+    </aside>
+  </main>
+
+  <div class="tooltip" id="tooltip"><div class="tt-code"></div><div class="tt-sub"></div><div class="tt-mix"></div></div>
+
+  <!-- MIT-licensed ncs-color 1.0.1 screen approximation converter. -->
+  <script src="vendor/ncs-color/ncscolor.min.js"></script>
+  <script>
+    (() => {
+      const $ = (s) => document.querySelector(s);
+      const app = $('#app');
+      const map = $('#map');
+      const tooltip = $('#tooltip');
+      const NS = 'http://www.w3.org/2000/svg';
+
+      // Map geometry (all inside the +/-448 viewBox - nothing can be clipped).
+      const RMAX = 400;         // outer edge of the outermost chroma ring
+      const R0 = 44;            // radius of the neutral centre disc
+      const LABEL_R = 426;      // axis labels sit outside the rings
+
+      const selected = { blackness: 40, chroma: 40, hueUnit: 20 };
+      let lastMapCells = [];
+      let currentHex = '#604046';
+      let currentRgb = { r: 96, g: 64, b: 70 };
+
+      function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
+      function pad2(v) { return String(Math.round(v)).padStart(2, '0'); }
+
+      function hueUnitToCode(unit) {
+        unit = ((Math.round(unit) % 400) + 400) % 400;
+        const segments = [
+          ['R','B'], ['B','G'], ['G','Y'], ['Y','R']
+        ];
+        const seg = Math.floor(unit / 100);
+        const within = unit % 100;
+        const [a,b] = segments[seg];
+        if (within === 0) return a;
+        return `${a}${pad2(within)}${b}`;
+      }
+
+      function hueCodeToUnit(hue) {
+        hue = hue.toUpperCase();
+        const base = { R:0, B:100, G:200, Y:300 };
+        if (base[hue] !== undefined) return base[hue];
+        const m = hue.match(/^([RBGY])(\d{1,2})([RBGY])$/);
+        if (!m) return null;
+        const a = m[1], pct = Number(m[2]), b = m[3];
+        const expected = { R:'B', B:'G', G:'Y', Y:'R' };
+        if (expected[a] !== b || pct <= 0 || pct >= 100) return null;
+        return base[a] + pct;
+      }
+
+      function makeCode(b, c, hueUnit) {
+        b = clamp(Math.round(b), 0, 99);
+        c = clamp(Math.round(c), 0, 99);
+        if (b + c > 100) c = 100 - b;
+        if (c <= 0) return `S ${pad2(b)}00-N`;
+        return `S ${pad2(b)}${pad2(c)}-${hueUnitToCode(hueUnit)}`;
+      }
+
+      function parseCode(raw) {
+        let s = raw.trim().toUpperCase().replace(/^NCS\s+/, '').replace(/^S\s+/, 'S ');
+        if (!s.startsWith('S ')) s = 'S ' + s;
+        const m = s.match(/^S\s+(\d{2})(\d{2})-(N|[RBGY](?:\d{1,2}[RBGY])?)$/);
+        if (!m) return null;
+        const b = Number(m[1]), c = Number(m[2]);
+        if (b + c > 100) return null;
+        if (m[3] === 'N') {
+          if (c !== 0) return null;
+          return { blackness: b, chroma: 0, hueUnit: 0, hue: 'N', code: `S ${m[1]}${m[2]}-N` };
+        }
+        if (c === 0) return null;
+        const hueUnit = hueCodeToUnit(m[3]);
+        if (hueUnit === null) return null;
+        return { blackness: b, chroma: c, hueUnit, hue: m[3], code: `S ${m[1]}${m[2]}-${m[3]}` };
+      }
+
+      // Local fallback only. NCS is not RGB; this is intentionally an approximation for screen preview.
+      function fallbackNcsRgb(b, c, hueUnit) {
+        if (c === 0) {
+          const v = Math.round((1 - b / 100) * 255);
+          return { r:v, g:v, b:v };
+        }
+        const u = ((hueUnit % 400) + 400) % 400;
+        let h;
+        if (u <= 100) h = 360 - (u / 100) * 120;        // R -> B through magenta
+        else if (u <= 200) h = 240 - ((u-100)/100)*120; // B -> G
+        else if (u <= 300) h = 120 - ((u-200)/100)*60;  // G -> Y
+        else h = 60 - ((u-300)/100)*60;                 // Y -> R
+        h = (h + 360) % 360;
+        const maxC = Math.max(1, 100 - b);
+        const s = clamp((c / maxC) * 88 + 6, 0, 100);
+        const whiteness = 100 - b - c;
+        const l = clamp(12 + whiteness * .72 + c * .33, 4, 96);
+        return hslToRgb(h, s, l);
+      }
+
+      function screenRgbFor(code, parsed) {
+        if (window.ncsColor && typeof window.ncsColor.rgb === 'function') {
+          try {
+            const out = window.ncsColor.rgb('NCS ' + code);
+            const m = out && out.match(/rgb\((\d+),(\d+),(\d+)\)/i);
+            if (m) return { r:+m[1], g:+m[2], b:+m[3] };
+          } catch (_) {}
+        }
+        return fallbackNcsRgb(parsed.blackness, parsed.chroma, parsed.hueUnit);
+      }
+
+      function rgbToHex({r,g,b}) {
+        return '#' + [r,g,b].map(v => clamp(Math.round(v),0,255).toString(16).padStart(2,'0')).join('').toUpperCase();
+      }
+
+      function hslToRgb(h, s, l) {
+        s /= 100; l /= 100;
+        const c = (1 - Math.abs(2*l - 1)) * s;
+        const x = c * (1 - Math.abs((h/60)%2 - 1));
+        const m = l - c/2;
+        let rp=0,gp=0,bp=0;
+        if (h < 60) [rp,gp,bp] = [c,x,0];
+        else if (h < 120) [rp,gp,bp] = [x,c,0];
+        else if (h < 180) [rp,gp,bp] = [0,c,x];
+        else if (h < 240) [rp,gp,bp] = [0,x,c];
+        else if (h < 300) [rp,gp,bp] = [x,0,c];
+        else [rp,gp,bp] = [c,0,x];
+        return { r:Math.round((rp+m)*255), g:Math.round((gp+m)*255), b:Math.round((bp+m)*255) };
+      }
+
+      function rgbToHsl({r,g,b}) {
+        r/=255; g/=255; b/=255;
+        const max=Math.max(r,g,b), min=Math.min(r,g,b), d=max-min;
+        let h=0;
+        if (d) {
+          if (max===r) h=60*(((g-b)/d)%6);
+          else if (max===g) h=60*((b-r)/d+2);
+          else h=60*((r-g)/d+4);
+        }
+        if (h<0) h+=360;
+        const l=(max+min)/2;
+        const s=d===0?0:d/(1-Math.abs(2*l-1));
+        return { h:Math.round(h), s:Math.round(s*100), l:Math.round(l*100) };
+      }
+
+      // Annular sector between radii r1..r2 and angles a1..a2 (radians).
+      function wedgePath(r1, r2, a1, a2) {
+        const large = (a2 - a1) > Math.PI ? 1 : 0;
+        const pt = (r, a) => `${(Math.cos(a)*r).toFixed(2)} ${(Math.sin(a)*r).toFixed(2)}`;
+        return `M ${pt(r2,a1)} A ${r2.toFixed(2)} ${r2.toFixed(2)} 0 ${large} 1 ${pt(r2,a2)}`
+             + ` L ${pt(r1,a2)} A ${r1.toFixed(2)} ${r1.toFixed(2)} 0 ${large} 0 ${pt(r1,a1)} Z`;
+      }
+
+      function wireCell(el, parsed, hex, rgb) {
+        el.dataset.code = parsed.code;
+        el.addEventListener('pointerenter', e => showTooltip(e, parsed, hex, rgb));
+        el.addEventListener('pointermove', moveTooltip);
+        el.addEventListener('pointerleave', hideTooltip);
+        el.addEventListener('click', () => selectParsed(parsed, true));
+      }
+
+      // The map is generated directly from the NCS code space: one ring per
+      // chromaticness step, one wedge per hue step, one centre disc for the
+      // neutral code. Every cell therefore corresponds to exactly one unique
+      // code - duplicates are impossible by construction.
+      function buildMap() {
+        const b = Number($('#blackness').value);
+        const chromaStep = Number($('#chromaStep').value);
+        const hueStep = Number($('#hueStep').value);
+        const maxChroma = Math.min(99, 100 - b);
+        $('#blacknessOut').value = b + '%';
+        $('#sliceTitle').textContent = `Blackness ${b}% · whiteness + chromaticness = ${100-b}%`;
+        document.querySelectorAll('#quickBlackness .chip-btn').forEach(btn => btn.classList.toggle('active', Number(btn.dataset.v)===b));
+
+        map.innerHTML = '';
+        const frag = document.createDocumentFragment();
+        lastMapCells = [];
+
+        // Neutral centre disc - the S bb00-N code of this slice.
+        const nParsed = { blackness: b, chroma: 0, hueUnit: 0, hue: 'N', code: makeCode(b, 0, 0) };
+        const nRgb = screenRgbFor(nParsed.code, nParsed);
+        const nHex = rgbToHex(nRgb);
+        const centre = document.createElementNS(NS, 'circle');
+        centre.setAttribute('r', R0 - 4);
+        centre.setAttribute('fill', nHex);
+        centre.setAttribute('class', 'cell');
+        wireCell(centre, nParsed, nHex, nRgb);
+        frag.appendChild(centre);
+        lastMapCells.push({ el: centre, parsed: nParsed });
+
+        const rings = [];
+        for (let c = chromaStep; c <= maxChroma; c += chromaStep) rings.push(c);
+        const nHues = 400 / hueStep;
+        const thickness = rings.length ? (RMAX - R0 - 6) / rings.length : 0;
+        const angGap = Math.min(0.012, (2 * Math.PI / nHues) * 0.10);
+        const halfSpan = (hueStep / 400) * Math.PI;
+
+        rings.forEach((c, i) => {
+          const r1 = R0 + 4 + i * thickness;
+          const r2 = r1 + thickness - 1.6;
+          for (let u = 0; u < 400; u += hueStep) {
+            const parsed = { blackness: b, chroma: c, hueUnit: u, hue: hueUnitToCode(u), code: makeCode(b, c, u) };
+            const rgb = screenRgbFor(parsed.code, parsed);
+            const hex = rgbToHex(rgb);
+            const a0 = (u / 400) * 2 * Math.PI;
+            const p = document.createElementNS(NS, 'path');
+            p.setAttribute('d', wedgePath(r1, r2, a0 - halfSpan + angGap, a0 + halfSpan - angGap));
+            p.setAttribute('fill', hex);
+            p.setAttribute('class', 'cell');
+            wireCell(p, parsed, hex, rgb);
+            frag.appendChild(p);
+            lastMapCells.push({ el: p, parsed });
+          }
+        });
+
+        map.appendChild(frag);
+        addAxisLabels();
+        $('#mapMeta').textContent = `${lastMapCells.length} cells · every cell is a unique NCS code`;
+        highlightSelectedCell();
+      }
+
+      function addAxisLabels() {
+        // hueUnit 0 = R (east), 100 = B (south), 200 = G (west), 300 = Y (north)
+        const labels = [ ['R', 0], ['B', 100], ['G', 200], ['Y', 300] ];
+        labels.forEach(([txt, u]) => {
+          const a = (u / 400) * 2 * Math.PI;
+          const t = document.createElementNS(NS, 'text');
+          t.setAttribute('x', (Math.cos(a) * LABEL_R).toFixed(2));
+          t.setAttribute('y', (Math.sin(a) * LABEL_R + 5).toFixed(2));
+          t.setAttribute('text-anchor', 'middle');
+          t.setAttribute('class', 'axis-label');
+          t.textContent = txt;
+          map.appendChild(t);
+        });
+      }
+
+      function showTooltip(e, parsed, hex, rgb) {
+        tooltip.querySelector('.tt-code').textContent = parsed.code;
+        tooltip.querySelector('.tt-sub').textContent = `${hex} · rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+        const w = 100 - parsed.blackness - parsed.chroma;
+        tooltip.querySelector('.tt-mix').textContent = `black ${parsed.blackness} · chroma ${parsed.chroma} · white ${w}`;
+        tooltip.classList.add('show');
+        moveTooltip(e);
+      }
+      function moveTooltip(e) {
+        // Keep the tooltip on screen near the right/bottom edges.
+        const pad = 14;
+        const r = tooltip.getBoundingClientRect();
+        let x = e.clientX, y = e.clientY;
+        if (x + r.width + pad + 12 > window.innerWidth) x = e.clientX - r.width - 24;
+        if (y + r.height + pad + 12 > window.innerHeight) y = e.clientY - r.height - 24;
+        tooltip.style.left = x + 'px';
+        tooltip.style.top = y + 'px';
+      }
+      function hideTooltip() { tooltip.classList.remove('show'); }
+
+      function hueDescription(hue) {
+        if (hue==='N') return 'Neutral colour with no chromatic hue.';
+        const m=hue.match(/^([RBGY])(\d+)?([RBGY])?$/);
+        const names={R:'red',B:'blue',G:'green',Y:'yellow'};
+        if (!m[2]) return `Elementary ${names[m[1]]}.`;
+        return `${names[m[1]][0].toUpperCase()+names[m[1]].slice(1)} with ${m[2]}% ${names[m[3]]}.`;
+      }
+
+      function selectParsed(parsed, syncSlice=false) {
+        selected.blackness=parsed.blackness;
+        selected.chroma=parsed.chroma;
+        selected.hueUnit=parsed.hueUnit;
+        if (selected.blackness + selected.chroma > 100) selected.chroma=100-selected.blackness;
+        if (syncSlice && Number($('#blackness').value)!==selected.blackness) {
+          $('#blackness').value=selected.blackness;
+          buildMap();
+        }
+        renderSelection();
+      }
+
+      function renderSelection() {
+        const b=selected.blackness, c=selected.chroma;
+        const w=100-b-c;
+        const code=makeCode(b,c,selected.hueUnit);
+        const parsed={blackness:b,chroma:c,hueUnit:selected.hueUnit,hue:c===0?'N':hueUnitToCode(selected.hueUnit),code};
+        const rgb=screenRgbFor(code,parsed);
+        const hex=rgbToHex(rgb);
+        const hsl=rgbToHsl(rgb);
+        currentHex=hex; currentRgb=rgb;
+        $('#selectedSwatch').style.background=hex;
+        $('#selectedCode').textContent=code;
+        $('#selectedDesc').textContent=`${hueDescription(parsed.hue)} Blackness ${b}%, chromaticness ${c}%, whiteness ${w}%.`;
+        $('#metricBlack').textContent=b; $('#metricChroma').textContent=c; $('#metricWhite').textContent=w;
+        $('#barBlack').style.width=b+'%'; $('#barChroma').style.width=c+'%'; $('#barWhite').style.width=w+'%';
+        $('#hexValue').textContent=hex;
+        $('#rgbValue').textContent=`${rgb.r}, ${rgb.g}, ${rgb.b}`;
+        $('#hslValue').textContent=`${hsl.h}°, ${hsl.s}%, ${hsl.l}%`;
+        $('#cssValue').textContent=`rgb(${rgb.r} ${rgb.g} ${rgb.b})`;
+        $('#hueValue').textContent=parsed.hue;
+        $('#hueUnitValue').textContent=c===0?'-':`${selected.hueUnit}/400`;
+        $('#selBlack').value=b; $('#selBlackOut').value=b;
+        $('#selChroma').max=Math.min(99,100-b); $('#selChroma').value=c; $('#selChromaOut').value=c;
+        $('#selHue').value=selected.hueUnit; $('#selHueOut').value=parsed.hue;
+        $('#search').value=code;
+        $('#status').textContent='';
+        highlightSelectedCell();
+      }
+
+      function highlightSelectedCell() {
+        if (!lastMapCells.length) return;
+        lastMapCells.forEach(x=>x.el.classList.remove('selected'));
+        if (Number($('#blackness').value)!==selected.blackness) return;
+        let best=null, bestScore=Infinity;
+        for (const cell of lastMapCells) {
+          const p=cell.parsed;
+          // Exact match first (every code appears exactly once on the map).
+          if (p.chroma===selected.chroma && (p.chroma===0 || p.hueUnit===selected.hueUnit)) { best=cell; break; }
+          const dh=(p.chroma===0||selected.chroma===0)?0:Math.min(Math.abs(p.hueUnit-selected.hueUnit),400-Math.abs(p.hueUnit-selected.hueUnit));
+          const score=Math.abs(p.chroma-selected.chroma)*4+dh;
+          if (score<bestScore) {bestScore=score;best=cell;}
+        }
+        if (best) {
+          best.el.classList.add('selected');
+          map.appendChild(best.el); // paint on top so the outline isn't hidden by neighbours
+        }
+      }
+
+      function searchCode() {
+        const parsed=parseCode($('#search').value);
+        if (!parsed) {
+          $('#status').textContent='Use e.g. S 4040-R20B or 4040-R20B.';
+          return;
+        }
+        $('#status').textContent='';
+        $('#blackness').value=parsed.blackness;
+        buildMap();
+        selectParsed(parsed,false);
+      }
+
+      // Rebuilds are cheap but throttle to one per frame while dragging the slider.
+      let buildQueued = null;
+      function scheduleBuild() {
+        if (buildQueued) return;
+        buildQueued = requestAnimationFrame(() => { buildQueued = null; buildMap(); });
+      }
+
+      $('#blackness').addEventListener('input', scheduleBuild);
+      $('#chromaStep').addEventListener('change', buildMap);
+      $('#hueStep').addEventListener('change', buildMap);
+      $('#quickBlackness').addEventListener('click', e=>{
+        const b=e.target.closest('[data-v]'); if(!b) return;
+        $('#blackness').value=b.dataset.v; buildMap();
+      });
+      $('#goSearch').addEventListener('click',searchCode);
+      $('#search').addEventListener('keydown',e=>{if(e.key==='Enter') searchCode();});
+
+      $('#selBlack').addEventListener('input', e=>{
+        selected.blackness=Number(e.target.value);
+        selected.chroma=Math.min(selected.chroma,100-selected.blackness);
+        $('#blackness').value=selected.blackness;
+        scheduleBuild();
+        renderSelection();
+      });
+      $('#selChroma').addEventListener('input', e=>{selected.chroma=Number(e.target.value);renderSelection();});
+      $('#selHue').addEventListener('input', e=>{selected.hueUnit=Number(e.target.value);renderSelection();});
+
+      document.querySelectorAll('[data-copy]').forEach(btn=>{
+        const originalLabel=btn.textContent;
+        let resetTimer=null;
+        btn.addEventListener('click',async()=>{
+          const type=btn.dataset.copy;
+          let text='';
+          if(type==='code') text=$('#selectedCode').textContent;
+          if(type==='hex') text=currentHex;
+          if(type==='rgb') text=`rgb(${currentRgb.r}, ${currentRgb.g}, ${currentRgb.b})`;
+          try {
+            await navigator.clipboard.writeText(text);
+            clearTimeout(resetTimer);
+            btn.textContent='Copied';
+            resetTimer=setTimeout(()=>{ btn.textContent=originalLabel; resetTimer=null; },900);
+          } catch(_) { prompt('Copy:',text); }
+        });
+      });
+
+      // Collapsible side panels.
+      function togglePanel(side) {
+        const cls = side + '-off';
+        const btn = side === 'left' ? $('#toggleLeft') : $('#toggleRight');
+        const hidden = app.classList.toggle(cls);
+        btn.setAttribute('aria-expanded', String(!hidden));
+        btn.textContent = side === 'left'
+          ? (hidden ? '⟩ Controls' : '⟨ Controls')
+          : (hidden ? 'Details ⟨' : 'Details ⟩');
+      }
+      $('#toggleLeft').addEventListener('click', () => togglePanel('left'));
+      $('#toggleRight').addEventListener('click', () => togglePanel('right'));
+      document.addEventListener('keydown', e => {
+        if (e.target.matches('input, select, textarea')) return;
+        if (e.key === '[') togglePanel('left');
+        if (e.key === ']') togglePanel('right');
+      });
+
+      buildMap();
+      renderSelection();
+    })();
+  </script>
+</body>
+</html>
