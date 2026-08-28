@@ -111,6 +111,8 @@
       line-height: 1.5;
     }
     .note strong { color: var(--ink); }
+    .format-hint { margin: -3px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+    .status.ok { color: #35704a; }
 
     .stage {
       min-height: calc(100vh - 28px);
@@ -378,6 +380,16 @@
         <div class="status" id="status" role="status"></div>
       </section>
 
+      <section class="control-group">
+        <label for="convertInput">Convert screen colour to NCS</label>
+        <div class="search-row">
+          <input id="convertInput" type="text" placeholder="#604046, rgb(...), or hsla(...)" spellcheck="false" />
+          <button id="convertColour" type="button">Find NCS</button>
+        </div>
+        <p class="format-hint">Accepts HEX, RGB/RGBA, and HSL/HSLA. Alpha is composited over white.</p>
+        <div class="status" id="convertStatus" role="status"></div>
+      </section>
+
       <div class="note">
         <strong>Screen-colour note.</strong> NCS is a perceptual/physical colour specification, not an RGB colour space. HEX/RGB here are screen approximations. This page explores the NCS notation space; the official NCS 2050 standard-chip catalogue is an irregular subset of that space.
       </div>
@@ -482,6 +494,11 @@
       let lastMapCells = [];
       let currentHex = '#604046';
       let currentRgb = { r: 96, g: 64, b: 70 };
+      let selectionRevision = 0;
+      const ncsLabCache = new Map();
+      let pendingHash = '';
+      let hashWriteTimer = null;
+      let lastHashWrite = -Infinity;
 
       function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
       function pad2(v) { return String(Math.round(v)).padStart(2, '0'); }
@@ -535,6 +552,34 @@
         return { blackness: b, chroma: c, hueUnit, hue: m[3], code: `S ${m[1]}${m[2]}-${m[3]}` };
       }
 
+      function hashForCode(code) {
+        return '#' + code.toLowerCase().replace(' ', '-');
+      }
+
+      function codeFromHash(hash) {
+        const m = hash.match(/^#s-(\d{4})-(n|[rbgy](?:\d{1,2}[rbgy])?)$/i);
+        if (!m) return null;
+        return parseCode(`S ${m[1]}-${m[2].replace(/\s/g, '')}`);
+      }
+
+      function persistSelection(code) {
+        pendingHash = hashForCode(code);
+        if (location.hash === pendingHash && hashWriteTimer === null) return;
+        if (hashWriteTimer !== null) return;
+
+        const writeHash = () => {
+          hashWriteTimer = null;
+          if (location.hash === pendingHash) return;
+          try {
+            history.replaceState(null, '', location.pathname + location.search + pendingHash);
+          } catch (_) {}
+          lastHashWrite = performance.now();
+        };
+        const wait = 400 - (performance.now() - lastHashWrite);
+        if (wait <= 0) writeHash();
+        else hashWriteTimer = setTimeout(writeHash, wait);
+      }
+
       // Local fallback only. NCS is not RGB; this is intentionally an approximation for screen preview.
       function fallbackNcsRgb(b, c, hueUnit) {
         if (c === 0) {
@@ -555,15 +600,23 @@
         return hslToRgb(h, s, l);
       }
 
+      function normalizeRgb(rgb) {
+        return {
+          r:clamp(Math.round(rgb.r),0,255),
+          g:clamp(Math.round(rgb.g),0,255),
+          b:clamp(Math.round(rgb.b),0,255)
+        };
+      }
+
       function screenRgbFor(code, parsed) {
         if (window.ncsColor && typeof window.ncsColor.rgb === 'function') {
           try {
             const out = window.ncsColor.rgb('NCS ' + code);
             const m = out && out.match(/rgb\((\d+),(\d+),(\d+)\)/i);
-            if (m) return { r:+m[1], g:+m[2], b:+m[3] };
+            if (m) return normalizeRgb({ r:+m[1], g:+m[2], b:+m[3] });
           } catch (_) {}
         }
-        return fallbackNcsRgb(parsed.blackness, parsed.chroma, parsed.hueUnit);
+        return normalizeRgb(fallbackNcsRgb(parsed.blackness, parsed.chroma, parsed.hueUnit));
       }
 
       function rgbToHex({r,g,b}) {
@@ -598,6 +651,159 @@
         const l=(max+min)/2;
         const s=d===0?0:d/(1-Math.abs(2*l-1));
         return { h:Math.round(h), s:Math.round(s*100), l:Math.round(l*100) };
+      }
+
+      function parseAlpha(value) {
+        const n = value.endsWith('%') ? Number(value.slice(0, -1)) / 100 : Number(value);
+        return Number.isFinite(n) && n >= 0 && n <= 1 ? n : null;
+      }
+
+      function compositeOverWhite(rgb, alpha) {
+        return {
+          r: Math.round(rgb.r * alpha + 255 * (1 - alpha)),
+          g: Math.round(rgb.g * alpha + 255 * (1 - alpha)),
+          b: Math.round(rgb.b * alpha + 255 * (1 - alpha))
+        };
+      }
+
+      function parseRgbChannel(value) {
+        const n = value.endsWith('%') ? Number(value.slice(0, -1)) * 2.55 : Number(value);
+        return Number.isFinite(n) && n >= 0 && n <= 255 ? Math.round(n) : null;
+      }
+
+      function parseFunctionalColour(raw) {
+        const m = raw.match(/^(rgba?|hsla?)\((.*)\)$/i);
+        if (!m) return null;
+        const name = m[1].toLowerCase();
+        const parts = m[2].trim().split('/');
+        if (parts.length > 2) return null;
+        const values = parts[0].replace(/,/g, ' ').trim().split(/\s+/).filter(Boolean);
+        let alphaToken = parts[1] && parts[1].trim();
+        if (!alphaToken && values.length === 4) alphaToken = values.pop();
+        const alpha = alphaToken ? parseAlpha(alphaToken) : 1;
+        if (alpha === null || values.length !== 3) return null;
+
+        if (name.startsWith('rgb')) {
+          const channels = values.map(parseRgbChannel);
+          if (channels.some(v => v === null)) return null;
+          return { rgb: compositeOverWhite({ r:channels[0], g:channels[1], b:channels[2] }, alpha), alpha };
+        }
+
+        const hue = Number(values[0].replace(/deg$/i, ''));
+        if (!Number.isFinite(hue) || !values[1].endsWith('%') || !values[2].endsWith('%')) return null;
+        const saturation = Number(values[1].slice(0, -1));
+        const lightness = Number(values[2].slice(0, -1));
+        if (![saturation, lightness].every(v => Number.isFinite(v) && v >= 0 && v <= 100)) return null;
+        const rgb = hslToRgb(((hue % 360) + 360) % 360, saturation, lightness);
+        return { rgb: compositeOverWhite(rgb, alpha), alpha };
+      }
+
+      function parseScreenColour(raw) {
+        const value = raw.trim();
+        const hex = value.match(/^#?([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+        if (hex) {
+          let digits = hex[1];
+          if (digits.length <= 4) digits = [...digits].map(x => x + x).join('');
+          const alpha = digits.length === 8 ? parseInt(digits.slice(6), 16) / 255 : 1;
+          const rgb = {
+            r: parseInt(digits.slice(0, 2), 16),
+            g: parseInt(digits.slice(2, 4), 16),
+            b: parseInt(digits.slice(4, 6), 16)
+          };
+          return { rgb: compositeOverWhite(rgb, alpha), alpha };
+        }
+
+        const functional = parseFunctionalColour(value);
+        if (functional) return functional;
+
+        const triplet = value.split(/[\s,]+/).filter(Boolean);
+        if (triplet.length === 3) {
+          const channels = triplet.map(parseRgbChannel);
+          if (!channels.some(v => v === null)) return { rgb:{ r:channels[0], g:channels[1], b:channels[2] }, alpha:1 };
+        }
+        return null;
+      }
+
+      function rgbToLab({r,g,b}) {
+        const linear = v => {
+          v /= 255;
+          return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4;
+        };
+        r=linear(r); g=linear(g); b=linear(b);
+        const x=(r*.4124+g*.3576+b*.1805)/.95047;
+        const y=(r*.2126+g*.7152+b*.0722);
+        const z=(r*.0193+g*.1192+b*.9505)/1.08883;
+        const pivot = v => v > .008856 ? Math.cbrt(v) : 7.787*v+16/116;
+        const fx=pivot(x), fy=pivot(y), fz=pivot(z);
+        return { l:116*fy-16, a:500*(fx-fy), b:200*(fy-fz) };
+      }
+
+      function labDistanceSquared(a, b) {
+        return (a.l-b.l)**2 + (a.a-b.a)**2 + (a.b-b.b)**2;
+      }
+
+      function labForNcs(code, parsed) {
+        const cached=ncsLabCache.get(code);
+        if (cached) return cached;
+        const lab=rgbToLab(screenRgbFor(code,parsed));
+        if (ncsLabCache.size>=50000) ncsLabCache.delete(ncsLabCache.keys().next().value);
+        ncsLabCache.set(code,lab);
+        return lab;
+      }
+
+      async function closestNcsForRgb(targetRgb) {
+        const targetLab = rgbToLab(targetRgb);
+        const seen = new Set();
+        let best = null;
+        let batches = 0;
+
+        async function yieldToBrowser() {
+          if (++batches%80===0) await new Promise(resolve=>requestAnimationFrame(resolve));
+        }
+
+        function consider(blackness, chroma, hueUnit=0) {
+          blackness=clamp(Math.round(blackness),0,99);
+          chroma=clamp(Math.round(chroma),0,Math.min(99,100-blackness));
+          hueUnit=((Math.round(hueUnit)%400)+400)%400;
+          const code=makeCode(blackness,chroma,hueUnit);
+          if (seen.has(code)) return;
+          seen.add(code);
+          const parsed={blackness,chroma,hueUnit,hue:chroma===0?'N':hueUnitToCode(hueUnit),code};
+          const distance=labDistanceSquared(targetLab,labForNcs(code,parsed));
+          if (!best || distance < best.distance) best={parsed,distance};
+        }
+
+        for (let b=0;b<=95;b+=5) {
+          consider(b,0);
+          for (let c=5;c<=Math.min(99,100-b);c+=5) {
+            for (let u=0;u<400;u+=10) consider(b,c,u);
+            await yieldToBrowser();
+          }
+        }
+        consider(99,0);
+
+        const coarse=best.parsed;
+        if (coarse.chroma===0) {
+          for (let b=Math.max(0,coarse.blackness-6);b<=Math.min(99,coarse.blackness+6);b++) {
+            for (let c=1;c<=Math.min(6,100-b);c++) {
+              for (let u=0;u<400;u+=5) consider(b,c,u);
+              await yieldToBrowser();
+            }
+          }
+        }
+
+        const refinementBase=best.parsed;
+        for (let b=Math.max(0,refinementBase.blackness-6);b<=Math.min(99,refinementBase.blackness+6);b++) {
+          for (let c=Math.max(0,refinementBase.chroma-6);c<=Math.min(99,100-b,refinementBase.chroma+6);c++) {
+            if (c===0) {
+              consider(b,0);
+              continue;
+            }
+            for (let offset=-12;offset<=12;offset++) consider(b,c,refinementBase.hueUnit+offset);
+            await yieldToBrowser();
+          }
+        }
+        return best.parsed;
       }
 
       // Annular sector between radii r1..r2 and angles a1..a2 (radians).
@@ -732,6 +938,7 @@
       }
 
       function renderSelection() {
+        selectionRevision++;
         const b=selected.blackness, c=selected.chroma;
         const w=100-b-c;
         const code=makeCode(b,c,selected.hueUnit);
@@ -756,7 +963,10 @@
         $('#selHue').value=selected.hueUnit; $('#selHueOut').value=parsed.hue;
         $('#search').value=code;
         $('#status').textContent='';
+        $('#convertStatus').classList.remove('ok');
+        $('#convertStatus').textContent='';
         highlightSelectedCell();
+        persistSelection(code);
       }
 
       function highlightSelectedCell() {
@@ -790,6 +1000,40 @@
         selectParsed(parsed,false);
       }
 
+      async function convertScreenColour() {
+        const input=parseScreenColour($('#convertInput').value);
+        const status=$('#convertStatus');
+        const button=$('#convertColour');
+        if (button.disabled) return;
+        status.classList.remove('ok');
+        if (!input) {
+          status.textContent='Use HEX, RGB/RGBA, HSL/HSLA, or an RGB triplet.';
+          return;
+        }
+
+        button.disabled=true;
+        button.textContent='Matching...';
+        status.textContent='Searching for the closest screen approximation.';
+        const revision=selectionRevision;
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        try {
+          const match=await closestNcsForRgb(input.rgb);
+          if (revision!==selectionRevision) {
+            status.textContent='Selection changed. Match discarded.';
+            return;
+          }
+          selectParsed(match,true);
+          status.classList.add('ok');
+          status.textContent=`Closest screen match: ${match.code}`
+            +(input.alpha<1?' after blending over white.':'.');
+        } catch (_) {
+          status.textContent='Could not find a match. Please try again.';
+        } finally {
+          button.disabled=false;
+          button.textContent='Find NCS';
+        }
+      }
+
       // Rebuilds are cheap but throttle to one per frame while dragging the slider.
       let buildQueued = null;
       function scheduleBuild() {
@@ -806,6 +1050,8 @@
       });
       $('#goSearch').addEventListener('click',searchCode);
       $('#search').addEventListener('keydown',e=>{if(e.key==='Enter') searchCode();});
+      $('#convertColour').addEventListener('click',convertScreenColour);
+      $('#convertInput').addEventListener('keydown',e=>{if(e.key==='Enter') convertScreenColour();});
 
       $('#selBlack').addEventListener('input', e=>{
         selected.blackness=Number(e.target.value);
@@ -860,6 +1106,21 @@
         if (e.key === ']') togglePanel('right');
       });
 
+      window.addEventListener('hashchange', () => {
+        const parsed=codeFromHash(location.hash);
+        if (!parsed) return;
+        $('#blackness').value=parsed.blackness;
+        buildMap();
+        selectParsed(parsed,false);
+      });
+
+      const initialHash=codeFromHash(location.hash);
+      if (initialHash) {
+        selected.blackness=initialHash.blackness;
+        selected.chroma=initialHash.chroma;
+        selected.hueUnit=initialHash.hueUnit;
+        $('#blackness').value=initialHash.blackness;
+      }
       buildMap();
       renderSelection();
     })();
