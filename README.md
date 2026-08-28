@@ -87,10 +87,14 @@ The explorer deliberately does not display RAL matches because it does not bundl
 - Move around the circle to change hue through `R`, `B`, `G`, and `Y`.
 - Change the resolution controls to show more or fewer sample points.
 - Enter a notation such as `S 4040-R20B` to jump directly to it.
+- Share the current selection with its URL hash, such as `#s-6040-r10b`. Opening that URL restores the selected colour.
+- Enter a HEX, RGB/RGBA, or HSL/HSLA colour to find the closest NCS screen approximation. Transparent inputs are composited over white first.
 - Use the detail controls to adjust the selected point and copy its screen approximation.
 - Press `[` or `]` when focus is outside a form control to collapse the left or right panel.
 
 The generated map covers regular steps through the notation space. It is not a catalog of official NCS 2050 chips.
+
+Reverse conversion is an approximate nearest-colour search across the explorer's generated NCS screen previews. RGB and HSL do not contain the perceptual surface-colour information needed to reconstruct one authoritative NCS notation, so the result is a useful starting point rather than a certified conversion.
 
 ## Run locally
 
