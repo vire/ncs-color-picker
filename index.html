@@ -338,6 +338,21 @@
         display: flex;
         flex-direction: column;
       }
+      .app.mobile-right-open .sidebar {
+        top: auto;
+        left: max(8px, env(safe-area-inset-left));
+        right: max(8px, env(safe-area-inset-right));
+        bottom: 0;
+        width: auto;
+        height: auto;
+        max-height: min(55vh, 480px);
+        max-height: min(55svh, 480px);
+        max-height: min(55dvh, 480px);
+        border-bottom: 0;
+        border-radius: 22px 22px 0 0;
+        box-shadow: 0 -18px 50px rgba(20, 20, 15, .18);
+      }
+      .app.mobile-right-open .sidebar > * { flex-shrink: 0; }
       .controls { gap: 22px; }
       .mobile-panel-head {
         position: sticky;
@@ -363,6 +378,10 @@
         background: #fff;
         color: var(--ink);
         font-weight: 750;
+      }
+      .app.mobile-right-open .sidebar .mobile-panel-head {
+        min-height: 60px;
+        padding-top: 8px;
       }
       input[type="text"], input[type="number"], select,
       .search-row button, .primary-btn, .chip-btn {
@@ -458,7 +477,7 @@
     <aside class="panel sidebar" id="sidebarPanel">
       <div class="mobile-panel-head">
         <span id="sidebarPanelTitle">Selected colour</span>
-        <button class="mobile-close" type="button" data-mobile-close="right">Close</button>
+        <button class="mobile-close" type="button" data-mobile-close="right">Collapse</button>
       </div>
       <div class="selected-swatch" id="selectedSwatch"><div class="swatch-badge" id="swatchBadge">screen approximation</div></div>
       <div class="code-row">
@@ -771,6 +790,7 @@
       }
 
       function selectParsed(parsed, syncSlice=false) {
+        const focusDetails = mobileQuery.matches && openMobileSide() === 'left';
         selected.blackness=parsed.blackness;
         selected.chroma=parsed.chroma;
         selected.hueUnit=parsed.hueUnit;
@@ -780,6 +800,7 @@
           buildMap();
         }
         renderSelection();
+        if (mobileQuery.matches) openMobilePanel('right', focusDetails);
       }
 
       function renderSelection() {
@@ -914,20 +935,24 @@
       }
 
       function updateMobileModal(side) {
-        const modalOpen = mobileQuery.matches && Boolean(side);
+        const modalOpen = mobileQuery.matches && side === 'left';
         stage.inert = modalOpen;
         stage.toggleAttribute('aria-hidden', modalOpen);
         Object.entries(mobilePanels).forEach(([panelSide, panel]) => {
-          const active = modalOpen && panelSide === side;
-          panel.inert = modalOpen && !active;
-          panel.toggleAttribute('aria-hidden', modalOpen && !active);
-          if (active) {
+          const visible = mobileQuery.matches && panelSide === side;
+          const activeModal = modalOpen && visible;
+          panel.inert = modalOpen && !activeModal;
+          panel.toggleAttribute('aria-hidden', modalOpen && !activeModal);
+          if (activeModal) {
             panel.setAttribute('role', 'dialog');
             panel.setAttribute('aria-modal', 'true');
-            panel.setAttribute('aria-labelledby', mobilePanelLabels[panelSide]);
           } else {
             panel.removeAttribute('role');
             panel.removeAttribute('aria-modal');
+          }
+          if (visible) {
+            panel.setAttribute('aria-labelledby', mobilePanelLabels[panelSide]);
+          } else {
             panel.removeAttribute('aria-labelledby');
           }
         });
@@ -945,6 +970,21 @@
         }
       }
 
+      function openMobilePanel(side, focusClose=true) {
+        if (openMobileSide() !== side) {
+          closeMobilePanels();
+          app.classList.add(`mobile-${side}-open`);
+          document.body.classList.toggle('mobile-panel-active', side === 'left');
+          updateMobileModal(side);
+          updateToggle(side, true);
+        }
+        if (focusClose) {
+          requestAnimationFrame(() => {
+            if (openMobileSide() === side) $(`[data-mobile-close="${side}"]`).focus();
+          });
+        }
+      }
+
       function togglePanel(side) {
         if (mobileQuery.matches) {
           const cls = `mobile-${side}-open`;
@@ -953,14 +993,7 @@
             closeMobilePanels(side);
             return;
           }
-          closeMobilePanels();
-          app.classList.add(cls);
-          document.body.classList.add('mobile-panel-active');
-          updateMobileModal(side);
-          updateToggle(side, true);
-          requestAnimationFrame(() => {
-            if (openMobileSide() === side) $(`[data-mobile-close="${side}"]`).focus();
-          });
+          openMobilePanel(side);
           return;
         }
         const cls = side + '-off';
@@ -988,7 +1021,7 @@
           return;
         }
         const side = openMobileSide();
-        if (e.key === 'Tab' && mobileQuery.matches && side) {
+        if (e.key === 'Tab' && mobileQuery.matches && side === 'left') {
           const panel = mobilePanels[side];
           const focusable = [...panel.querySelectorAll(focusableSelector)]
             .filter(el => el.getClientRects().length && !el.hidden);
