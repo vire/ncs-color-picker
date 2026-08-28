@@ -252,8 +252,6 @@
     .hue-display { font-size: 11px; color: var(--muted); margin-top: -2px; }
     .footer-note { color: var(--muted); font-size: 10px; line-height: 1.45; margin-top: 20px; }
     .status { min-height: 16px; font-size: 11px; color: #9a3f45; }
-    .mobile-panel-head { display: none; }
-
     @media (prefers-reduced-motion: reduce) {
       .cell, .tooltip { transition: none; }
     }
@@ -273,122 +271,62 @@
     }
     @media (max-width: 620px), (max-height: 620px) and (max-width: 960px) and (pointer: coarse) {
       body { overflow-x: hidden; }
-      body.mobile-panel-active { overflow: hidden; }
       .app, .app.left-off, .app.right-off, .app.left-off.right-off {
-        display: block;
+        gap: 0;
         min-height: 100svh;
         padding: 0;
       }
       .panel { border-radius: 0; }
+      .controls, .sidebar {
+        position: static;
+        width: 100%;
+        height: auto;
+        padding: 22px max(18px, env(safe-area-inset-right)) 24px max(18px, env(safe-area-inset-left));
+        overflow: visible;
+        background: var(--panel);
+      }
+      .controls,
+      .app.left-off .controls {
+        display: flex;
+        padding-top: max(22px, env(safe-area-inset-top));
+      }
       .stage {
-        min-height: 100svh;
-        min-height: 100dvh;
-        height: 100svh;
-        height: 100dvh;
+        min-height: min(100svh, 680px);
+        height: auto;
       }
       .stage-head {
-        min-height: 70px;
-        padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-      }
-      .stage-meta { display: none; }
-      .stage-head > .head-cluster { display: contents; }
-      .stage-head > .head-cluster:first-child > div {
-        grid-column: 1 / -1;
-        grid-row: 2;
+        min-height: 64px;
+        justify-content: center;
+        padding: 18px 16px 0;
         text-align: center;
       }
-      #toggleLeft { grid-column: 1; grid-row: 1; justify-self: start; }
-      #toggleRight { grid-column: 2; grid-row: 1; justify-self: end; }
-      .ghost-btn {
-        min-height: 44px;
-        padding: 10px 11px;
-      }
-      .map-wrap { padding: 4px 5px 76px; }
+      .stage-meta { display: none; }
+      #toggleLeft, #toggleRight { display: none; }
+      .map-wrap { padding: 6px 5px 24px; }
       #map {
-        width: min(100%, calc(100dvh - 170px));
-        max-height: calc(100dvh - 170px);
+        width: min(100%, 620px, calc(100vh - 140px));
+        width: min(100%, 620px, calc(100svh - 140px));
+        max-height: none;
       }
       .legend {
-        left: max(10px, env(safe-area-inset-left));
-        right: max(10px, env(safe-area-inset-right));
-        bottom: max(10px, env(safe-area-inset-bottom));
+        position: static;
+        justify-content: center;
+        margin: 0 max(10px, env(safe-area-inset-right)) 10px max(10px, env(safe-area-inset-left));
         flex-wrap: nowrap;
         overflow: hidden;
       }
       .legend span { padding: 6px 8px; }
       .legend span:nth-child(n+3) { display: none; }
-      .controls, .sidebar,
-      .app.left-off .controls, .app.right-off .sidebar {
-        display: none;
-        position: fixed;
-        z-index: 30;
-        inset: 0;
-        height: 100svh;
-        height: 100dvh;
-        padding: 0 max(18px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
-        overflow-y: auto;
-        overscroll-behavior: contain;
-        background: rgba(250,250,247,.98);
-      }
-      .app.mobile-left-open .controls,
-      .app.mobile-right-open .sidebar {
-        display: flex;
-        flex-direction: column;
-      }
-      .app.mobile-right-open .sidebar {
-        top: auto;
-        left: max(8px, env(safe-area-inset-left));
-        right: max(8px, env(safe-area-inset-right));
-        bottom: 0;
-        width: auto;
-        height: auto;
-        max-height: min(55vh, 480px);
-        max-height: min(55svh, 480px);
-        max-height: min(55dvh, 480px);
-        border-bottom: 0;
-        border-radius: 22px 22px 0 0;
-        box-shadow: 0 -18px 50px rgba(20, 20, 15, .18);
-      }
-      .app.mobile-right-open .sidebar > * { flex-shrink: 0; }
-      .controls { gap: 22px; }
-      .mobile-panel-head {
-        position: sticky;
-        z-index: 2;
-        top: 0;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        min-height: calc(64px + env(safe-area-inset-top));
-        margin: 0 min(-18px, calc(0px - env(safe-area-inset-right))) 0 min(-18px, calc(0px - env(safe-area-inset-left)));
-        padding: max(10px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) 10px max(18px, env(safe-area-inset-left));
-        border-bottom: 1px solid var(--line);
-        background: rgba(250,250,247,.96);
-        backdrop-filter: blur(14px);
-        font-size: 13px;
-        font-weight: 800;
-      }
-      .mobile-close {
-        min-width: 44px;
-        min-height: 44px;
-        border: 1px solid var(--line);
-        border-radius: 11px;
-        background: #fff;
-        color: var(--ink);
-        font-weight: 750;
-      }
-      .app.mobile-right-open .sidebar .mobile-panel-head {
-        min-height: 60px;
-        padding-top: 8px;
+      .sidebar,
+      .app.right-off .sidebar {
+        display: block;
+        padding-bottom: max(30px, env(safe-area-inset-bottom));
       }
       input[type="text"], input[type="number"], select,
       .search-row button, .primary-btn, .chip-btn {
         min-height: 44px;
       }
       input[type="range"] { min-height: 44px; }
-      .selected-swatch { height: 132px; margin-top: 18px; }
       .tooltip { display: none; }
     }
   </style>
@@ -396,10 +334,6 @@
 <body>
   <main class="app" id="app">
     <aside class="panel controls" id="controlsPanel">
-      <div class="mobile-panel-head">
-        <span id="controlsPanelTitle">Explorer controls</span>
-        <button class="mobile-close" type="button" data-mobile-close="left">Close</button>
-      </div>
       <header>
         <div class="eyebrow">Natural Colour System</div>
         <h1>NCS Colour Explorer</h1>
@@ -475,10 +409,6 @@
     </section>
 
     <aside class="panel sidebar" id="sidebarPanel">
-      <div class="mobile-panel-head">
-        <span id="sidebarPanelTitle">Selected colour</span>
-        <button class="mobile-close" type="button" data-mobile-close="right">Collapse</button>
-      </div>
       <div class="selected-swatch" id="selectedSwatch"><div class="swatch-badge" id="swatchBadge">screen approximation</div></div>
       <div class="code-row">
         <div class="selected-code" id="selectedCode">S 4040-R20B</div>
@@ -790,7 +720,6 @@
       }
 
       function selectParsed(parsed, syncSlice=false) {
-        const focusDetails = mobileQuery.matches && openMobileSide() === 'left';
         selected.blackness=parsed.blackness;
         selected.chroma=parsed.chroma;
         selected.hueUnit=parsed.hueUnit;
@@ -800,7 +729,6 @@
           buildMap();
         }
         renderSelection();
-        if (mobileQuery.matches) openMobilePanel('right', focusDetails);
       }
 
       function renderSelection() {
@@ -907,18 +835,8 @@
         });
       });
 
-      // Collapsible side panels and mobile sheets.
+      // Side panels collapse on desktop. Mobile keeps all sections in page flow.
       const mobileQuery = window.matchMedia('(max-width: 620px), (max-height: 620px) and (max-width: 960px) and (pointer: coarse)');
-      const stage = $('.stage');
-      const mobilePanels = {
-        left: $('#controlsPanel'),
-        right: $('#sidebarPanel')
-      };
-      const mobilePanelLabels = {
-        left: 'controlsPanelTitle',
-        right: 'sidebarPanelTitle'
-      };
-      const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
       function updateToggle(side, expanded) {
         const btn = side === 'left' ? $('#toggleLeft') : $('#toggleRight');
@@ -928,124 +846,20 @@
           : (expanded ? 'Details ⟩' : 'Details ⟨');
       }
 
-      function openMobileSide() {
-        if (app.classList.contains('mobile-left-open')) return 'left';
-        if (app.classList.contains('mobile-right-open')) return 'right';
-        return null;
-      }
-
-      function updateMobileModal(side) {
-        const modalOpen = mobileQuery.matches && side === 'left';
-        stage.inert = modalOpen;
-        stage.toggleAttribute('aria-hidden', modalOpen);
-        Object.entries(mobilePanels).forEach(([panelSide, panel]) => {
-          const visible = mobileQuery.matches && panelSide === side;
-          const activeModal = modalOpen && visible;
-          panel.inert = modalOpen && !activeModal;
-          panel.toggleAttribute('aria-hidden', modalOpen && !activeModal);
-          if (activeModal) {
-            panel.setAttribute('role', 'dialog');
-            panel.setAttribute('aria-modal', 'true');
-          } else {
-            panel.removeAttribute('role');
-            panel.removeAttribute('aria-modal');
-          }
-          if (visible) {
-            panel.setAttribute('aria-labelledby', mobilePanelLabels[panelSide]);
-          } else {
-            panel.removeAttribute('aria-labelledby');
-          }
-        });
-      }
-
-      function closeMobilePanels(returnFocusSide = null) {
-        app.classList.remove('mobile-left-open', 'mobile-right-open');
-        document.body.classList.remove('mobile-panel-active');
-        updateMobileModal(null);
-        updateToggle('left', false);
-        updateToggle('right', false);
-        if (returnFocusSide) {
-          const btn = returnFocusSide === 'left' ? $('#toggleLeft') : $('#toggleRight');
-          btn.focus({ preventScroll: true });
-        }
-      }
-
-      function openMobilePanel(side, focusClose=true) {
-        if (openMobileSide() !== side) {
-          closeMobilePanels();
-          app.classList.add(`mobile-${side}-open`);
-          document.body.classList.toggle('mobile-panel-active', side === 'left');
-          updateMobileModal(side);
-          updateToggle(side, true);
-        }
-        if (focusClose) {
-          requestAnimationFrame(() => {
-            if (openMobileSide() === side) $(`[data-mobile-close="${side}"]`).focus();
-          });
-        }
-      }
-
       function togglePanel(side) {
-        if (mobileQuery.matches) {
-          const cls = `mobile-${side}-open`;
-          const opening = !app.classList.contains(cls);
-          if (!opening) {
-            closeMobilePanels(side);
-            return;
-          }
-          openMobilePanel(side);
-          return;
-        }
+        if (mobileQuery.matches) return;
         const cls = side + '-off';
         const hidden = app.classList.toggle(cls);
         updateToggle(side, !hidden);
       }
       $('#toggleLeft').addEventListener('click', () => togglePanel('left'));
       $('#toggleRight').addEventListener('click', () => togglePanel('right'));
-      document.querySelectorAll('[data-mobile-close]').forEach(btn => {
-        btn.addEventListener('click', () => closeMobilePanels(btn.dataset.mobileClose));
-      });
-      mobileQuery.addEventListener('change', () => {
-        const side = openMobileSide();
-        closeMobilePanels(side);
-        updateToggle('left', mobileQuery.matches ? false : !app.classList.contains('left-off'));
-        updateToggle('right', mobileQuery.matches ? false : !app.classList.contains('right-off'));
-      });
       document.addEventListener('keydown', e => {
-        if (e.key === 'Escape' && mobileQuery.matches) {
-          const side = openMobileSide();
-          if (side) {
-            e.preventDefault();
-            closeMobilePanels(side);
-          }
-          return;
-        }
-        const side = openMobileSide();
-        if (e.key === 'Tab' && mobileQuery.matches && side === 'left') {
-          const panel = mobilePanels[side];
-          const focusable = [...panel.querySelectorAll(focusableSelector)]
-            .filter(el => el.getClientRects().length && !el.hidden);
-          if (!focusable.length) {
-            e.preventDefault();
-            return;
-          }
-          const first = focusable[0];
-          const last = focusable[focusable.length - 1];
-          if (e.shiftKey && (document.activeElement === first || !panel.contains(document.activeElement))) {
-            e.preventDefault();
-            last.focus();
-          } else if (!e.shiftKey && (document.activeElement === last || !panel.contains(document.activeElement))) {
-            e.preventDefault();
-            first.focus();
-          }
-          return;
-        }
         if (e.target.matches('input, select, textarea')) return;
         if (e.key === '[') togglePanel('left');
         if (e.key === ']') togglePanel('right');
       });
 
-      if (mobileQuery.matches) closeMobilePanels();
       buildMap();
       renderSelection();
     })();
